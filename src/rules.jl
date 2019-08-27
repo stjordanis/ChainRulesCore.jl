@@ -195,14 +195,6 @@ struct WirtingerRule{P<:AbstractRule,C<:AbstractRule} <: AbstractRule
     conjugate::C
 end
 
-function WirtingerRule(𝒟::Type, primal::AbstractRule, conjugate::AbstractRule)
-    if 𝒟 <: Real || eltype(𝒟) <: Real
-        return Rule((args...) -> add(primal(args...), conjugate(args...)))
-    else
-        return WirtingerRule(primal, conjugate)
-    end
-end
-
 function (rule::WirtingerRule)(args...)
     return Wirtinger(rule.primal(args...), rule.conjugate(args...))
 end
