@@ -169,11 +169,22 @@ accumulate!(Δ, rule::Rule{F,U}, args...) where {F,U<:Function} = rule.u(Δ, arg
     NO_FIELDS_RULE
 
 Constant for the rule for the derivative with respect to structure that has no fields.
-The most notable use for this is for the dertiviate with respect to the function itself,
-when that function is not a closure.
+The most notable use for this is for the reverse-mode derivative with respect to the
+function itself, when that function is not a closure.
 The rule returns an empty `NamedTuple` for all inputs.
 """
 const NO_FIELDS_RULE = Rule((args...)->NamedTuple())
+
+"""
+    ZERO_RULE
+
+This is a rule that returns `Zero()` regardless of input.
+The most notable use for this is for the forward-mode derivative with respect to the
+function itself, when that function is not a closure.
+"""
+const ZERO_RULE = Rule((args...)->Zero())
+
+
 
 #####
 ##### `DNERule`

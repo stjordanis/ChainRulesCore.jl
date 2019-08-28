@@ -14,7 +14,7 @@ methods for `frule` and `rrule`:
     function ChainRulesCore.frule(::typeof(f), x₁::Number, x₂::Number, ...)
         Ω = f(x₁, x₂, ...)
         \$(statement₁, statement₂, ...)
-        return Ω, (NO_FIELDS_RULE,
+        return Ω, (ZERO_RULE,
                    Rule((Δx₁, Δx₂, ...) -> ∂f₁_∂x₁ * Δx₁ + ∂f₁_∂x₂ * Δx₂ + ...),
                    Rule((Δx₁, Δx₂, ...) -> ∂f₂_∂x₁ * Δx₁ + ∂f₂_∂x₂ * Δx₂ + ...),
                    ...)
@@ -38,7 +38,8 @@ e.g. `f(x₁::Complex, x₂)`, which will constrain `x₁` to `Complex` and `x�
 
 At present this does not support defining rules for closures/functors.
 This the first returned rule, representing the derivative with respect to the
-function itself, is always the `NO_FIELDS_RULE`.
+function itself, is always the `NO_FIELDS_RULE` (reverse-mode),
+or `ZERO_RULE` (forward-mode).
 
 The result of `f(x₁, x₂, ...)` is automatically bound to `Ω`. This
 allows the primal result to be conveniently referenced (as `Ω`) within the
@@ -101,7 +102,7 @@ macro scalar_rule(call, maybe_setup, partials...)
 
     # First pseudo-partial is derivative WRT function itself.  Since this macro does not
     # support closures, it is just the empty NamedTuple
-    forward_rules = Expr(:tuple, NO_FIELDS_RULE, forward_rules...)
+    forward_rules = Expr(:tuple, ZERO_RULE, forward_rules...)
     reverse_rules = Expr(:tuple, NO_FIELDS_RULE, reverse_rules...)
     return quote
         if fieldcount(typeof($f)) > 0
