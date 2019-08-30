@@ -98,16 +98,15 @@ macro scalar_rule(call, maybe_setup, partials...)
             Expr(:tuple, partial)
         end
     end
-    @show partials
 
     ############################################################
     # Make pullback
     #(TODO: move to own function)
     # TODO: Wirtinger
-    
+
     Δs = [Symbol(string(:Δ, i)) for i in 1:length(partials)]
     pullback_returns = map(eachindex(inputs)) do input_i
-        ∂s = [partials.args[input_i] for partial in partials]
+        ∂s = [partial.args[input_i] for partial in partials]
         ∂s = map(esc, ∂s)
 
         # Notice: the thunking of `∂s[i] (potentially) saves us some computation
@@ -115,23 +114,38 @@ macro scalar_rule(call, maybe_setup, partials...)
         # as the pullback is evaluated
         ∂_mul_Δs = [:(@thunk($(∂s[i])) * $(Δs[i])) for i in 1:length(∂s)]
         :(+($(∂_mul_Δs...)))
-    else
+    end
 
     pullback = quote
-        function $(Symbol(nameof(f), :_pullback))($(Δs...))
-            return (ChainRulesCore.NO_FIELDS, $(pullback_returns...))
+        function $(Symbol(f.args[1], :_pullback))($(Δs...))
+            return (NO_FIELDS, $(pullback_returns...))
         end
     end
 
     ########################################
-    quote
+    code = quote
         function ChainRulesCore.rrule(::typeof($f), $(inputs...))
             $(esc(:Ω)) = $call
             $(setup_stmts...)
-            return $(esc(:Ω)), $esc(pullback)
+            return $(esc(:Ω)), $pullback
         end
     end
+
 end
+using ChainRulesCore
+
+
+macro niceexpand(code)
+    code = Base.macroexpand(Main, code, recursive=false)
+    code = MacroTools.postwalk(MacroTools.unblock, code)
+    code = MacroTools.gensym_ids(code)
+    code = MacroTools.striplines(code)
+    return QuoteNode(code)
+end
+
+@niceexpand(@scalar_rule(one(x), Zero()))
+@niceexpand(@scalar_rule(sincos(x), @setup((sinx, cosx) = Ω), cosx, -sinx))
+
 #==
     if !all(Meta.isexpr(partial, :tuple) for partial in partials)
         input_rep = :(first(promote($(inputs...))))  # stand-in with the right type for an input
@@ -171,7 +185,6 @@ end
 end
 ==#
 
-@macroexpand(@scalar_rule(one(x), Zero()))
 
 
 
