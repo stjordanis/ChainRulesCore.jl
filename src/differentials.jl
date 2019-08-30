@@ -135,24 +135,24 @@ Base.iterate(::Zero, ::Any) = nothing
 
 
 #####
-##### `DNE`
+##### `DoesNotExist`
 #####
 
 """
-    DNE()
+    DoesNotExist()
 
-This differential indicates that the derivative Does Not Exist (D.N.E).
-This is not the cast that it is not implemented, but rather that it mathematically
+This differential indicates that the derivative Does Not Exist.
+This is not the case that it is not implemented, but rather that it mathematically
 is not defined.
 """
-struct DNE <: AbstractDifferential end
+struct DoesNotExist <: AbstractDifferential end
 
-extern(x::DNE) = error("`DNE` cannot be converted into an external type.")
+extern(x::DoesNotExist) = error("`DoesNotExist` cannot be converted into an external type.")
 
-Base.Broadcast.broadcastable(::DNE) = Ref(DNE())
+Base.Broadcast.broadcastable(::DoesNotExist) = Ref(DoesNotExist())
 
-Base.iterate(x::DNE) = (x, nothing)
-Base.iterate(::DNE, ::Any) = nothing
+Base.iterate(x::DoesNotExist) = (x, nothing)
+Base.iterate(::DoesNotExist, ::Any) = nothing
 
 #####
 ##### `One`

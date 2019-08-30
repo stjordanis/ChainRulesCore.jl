@@ -46,7 +46,8 @@ julia> dy(Δh) == (y / h) * Δh
 true
 ```
 
-See also: [`frule`](@ref), [`rrule`](@ref), [`Rule`](@ref), [`DNERule`](@ref), [`WirtingerRule`](@ref)
+See also: [`frule`](@ref), [`rrule`](@ref), [`Rule`](@ref), [`DoesNotExistRule`](@ref),
+  [`WirtingerRule`](@ref)
 """
 abstract type AbstractRule end
 
@@ -159,19 +160,18 @@ Base.show(io::IO, rule::Rule) = print(io, "Rule($(rule.f), $(rule.u))")
 accumulate!(Δ, rule::Rule{F,U}, args...) where {F,U<:Function} = rule.u(Δ, args...)
 
 #####
-##### `DNERule`
+##### `DoesNotExistRule`
 #####
 
 """
-    DNERule(args...)
+    DoesNotExistRule(args...)
 
-Construct a `DNERule` object, which is an `AbstractRule` that signifies that the
+Construct a `DoesNotExistRule` object, which is an `AbstractRule` that signifies that the
 current function is not differentiable with respect to a particular parameter.
-**DNE** is an abbreviation for Does Not Exist.
 """
-struct DNERule <: AbstractRule end
+struct DoesNotExistRule <: AbstractRule end
 
-DNERule(args...) = DNE()
+DoesNotExistRule(args...) = DoesNotExist()
 
 #####
 ##### `WirtingerRule`
