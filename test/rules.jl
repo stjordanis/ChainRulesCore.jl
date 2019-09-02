@@ -38,3 +38,35 @@ _second(t) = Base.tuple_type_head(Base.tuple_type_tail(t))
     @test rrx == 2
     @test rr1 == 1
 end
+
+
+@testset "Wirtinger scalar_rule" begin
+    myabs2(x) = abs2(x)
+    @scalar_rule(myabs2(x), Wirtinger(x', x))
+
+    # real input
+    x = rand(Float64)
+    f, pushforward = frule(myabs2, x)
+    @test f === x^2
+
+    df = @inferred pushforward(NamedTuple(), One())
+    @test df === (x + x,)
+
+
+    Δ = rand(Complex{Int64})
+    df = @inferred pushforward(NamedTuple(), Δ)
+    @test df === (Δ * (x + x),)
+
+
+    # complex input
+    z = rand(Complex{Float64})
+    f, pushforward = frule(myabs2, z)
+    @test f === abs2(z)
+
+    df = @inferred pushforward(NamedTuple(), One())
+    @test df === (Wirtinger(z', z),)
+
+    Δ = rand(Complex{Int64})
+    df = @inferred pushforward(NamedTuple(), Δ)
+    @test df === (Wirtinger(Δ * z', Δ * z),)
+end
