@@ -64,7 +64,7 @@ e.g. `f(x₁::Complex, x₂)`, which will constrain `x₁` to `Complex` and `x�
 At present this does not support defining for closures/functors.
 Thus in reverse-mode, the first returned partial,
 representing the derivative with respect to the function itself, is always `NO_FIELDS`.
-And in forwards-mode, the first input to the returned propergator is always ignored.
+And in forwards-mode, the first input to the returned propagator is always ignored.
 
 The result of `f(x₁, x₂, ...)` is automatically bound to `Ω`. This
 allows the primal result to be conveniently referenced (as `Ω`) within the
@@ -113,6 +113,7 @@ macro scalar_rule(call, maybe_setup, partials...)
         end
     end
 
+    # For consistency in code that follows we make all partials tuple expressions
     partials = map(partials) do partial
         if Meta.isexpr(partial, :tuple)
             partial
@@ -123,11 +124,27 @@ macro scalar_rule(call, maybe_setup, partials...)
     end
 
     ############################################################
-    # Make pullback
-    #(TODO: move to own function)
     # TODO: Wirtinger
     n_outputs = length(partials)
     n_inputs = length(inputs)
+
+    pushforward = let
+        # Δs is the input to the propagator rule
+        # because this is push-forward there is one per input to the function
+        Δs = [Symbol(string(:Δ, i)) for i in 1:n_inputs]
+        pushforward_returns = map(1:n_outputs) do output_i
+            ∂s = partials[output_i].args
+            expr_for_∑_∂_mul_Δs(Δs, ∂s)
+        end
+
+        quote
+            # _ is the input derivative w.r.t. function internals. since we do not
+            # allow closures/functors with @scalar_rule, it is always ignored
+            function $(propagator_name(f, :pushforward))(_, $(Δs...))
+                return $(Expr(:tuple, pushforward_returns...))
+            end
+        end
+    end
 
 
     pullback = let
@@ -148,25 +165,6 @@ macro scalar_rule(call, maybe_setup, partials...)
         end
     end
 
-    pushforward = let
-        # Δs is the input to the propagator rule
-        # because this is push-forward there is one per input to the function
-        Δs = [Symbol(string(:Δ, i)) for i in 1:n_inputs]
-        pushforward_returns = map(partials) do partial
-            ∂s = partial.args
-            expr_for_∑_∂_mul_Δs(Δs, ∂s)
-        end
-
-        quote
-            # _ is the input derivative w.r.t. function internals. since we do not
-            # allow closures/functors with @scalar_rule, it is always ignored
-            function $(propagator_name(f, :pushforward))(_, $(Δs...))
-                return ($(pushforward_returns...))
-            end
-        end
-    end
-
-
     ########################################
     code = quote
         if fieldcount(typeof($f)) > 0
@@ -175,16 +173,16 @@ macro scalar_rule(call, maybe_setup, partials...)
             ))
         end
 
-        function ChainRulesCore.rrule(::typeof($f), $(inputs...))
-            $(esc(:Ω)) = $call
-            $(setup_stmts...)
-            return $(esc(:Ω)), $pullback
-        end
-
         function ChainRulesCore.frule(::typeof($f), $(inputs...))
             $(esc(:Ω)) = $call
             $(setup_stmts...)
             return $(esc(:Ω)), $pushforward
+        end
+
+        function ChainRulesCore.rrule(::typeof($f), $(inputs...))
+            $(esc(:Ω)) = $call
+            $(setup_stmts...)
+            return $(esc(:Ω)), $pullback
         end
     end
 end
