@@ -235,3 +235,16 @@ The most notable use for this is for the reverse-mode derivative with respect to
 function itself, when that function is not a closure.
 """
 const NO_FIELDS = DNE()
+
+####
+"""
+    differential(𝒟::Type, der)
+
+For some differential (e.g. a `Number`, `AbstractDifferential`, `Matrix` etc),
+converts it to another differential that is more suited for the domain given by
+the type 𝒟.
+"""
+function differential(::Type{<:Union{<:Real, AbstractArray{<:Real}}}, w::Wirtinger)
+    return wirtinger_primal(w) + wirtinger_conjugate(w)
+end
+differential(::Any, der) = der  # most of the time leave it alone.

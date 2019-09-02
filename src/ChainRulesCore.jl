@@ -2,6 +2,7 @@ module ChainRulesCore
 using Base.Broadcast: materialize, materialize!, broadcasted, Broadcasted, broadcastable
 
 export AbstractRule, Rule, frule, rrule
+export wirtinger_conjugate, wirtinger_primal, differential
 export @scalar_rule, @thunk
 export extern, cast, store!
 export Wirtinger, Zero, One, Casted, DNE, Thunk, DNERule

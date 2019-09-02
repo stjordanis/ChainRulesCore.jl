@@ -6,13 +6,30 @@ propagator_name(fname::QuoteNode, propname::Symbol) = propagator_name(fname.valu
 
 
 """
-    expr_for_∑_∂_mul_Δs(Δs, ∂s)
+    propergation_expr(𝒟, Δs, ∂s)
 
-    Returns the expression for the dot-product based propagation of
+    Returns the expression for the propagation of
     the input gradient `Δs` though the partials `∂s`.
+
+    𝒟 is an expression that when evaluated returns the type-of the input domain.
+    For example if the deriviative is being taken at the point `1` it returns `Int`.
+    if it is taken at `1+1im` it returns `Complex{Int}`.
+    At present it is ignored for non-Wirtinger derivatives.
 """
-function expr_for_∑_∂_mul_Δs(Δs, ∂s)
+function propergation_expr(𝒟, Δs, ∂s)
+    wirtinger_indices = findall(∂s) do ex
+        Meta.isexpr(ex, :call) && ex.args[1] === :Wirtinger
+    end
     ∂s = map(esc, ∂s)
+    if isempty(wirtinger_indices)
+        return standard_propergation_expr(Δs, ∂s)
+    else
+        return wirtinger_propergation_expr(𝒟, wirtinger_indices, Δs, ∂s)
+    end
+end
+
+function standard_propergation_expr(Δs, ∂s)
+    # This is basically Δs ⋅ ∂s
 
     # Notice: the thunking of `∂s[i] (potentially) saves us some computation
     # if `Δs[i]` is a `AbstractDifferential` otherwise it is computed as soon
@@ -21,6 +38,35 @@ function expr_for_∑_∂_mul_Δs(Δs, ∂s)
     return :(+($(∂_mul_Δs...)))
 end
 
+function wirtinger_propergation_expr(𝒟, wirtinger_indices, Δs, ∂s)
+    ∂_mul_Δs_primal = Any[]
+    ∂_mul_Δs_conjugate = Any[]
+    ∂_wirtinger_defs = Any[]
+    for i in 1:length(∂s)
+        if i in wirtinger_indices
+            Δi = Δs[i]
+            ∂i = Symbol(string(:∂, i))
+            push!(∂_wirtinger_defs, :($∂i = $(∂s[i])))
+            ∂f∂i_mul_Δ = :(wirtinger_primal($∂i) * wirtinger_primal($Δi))
+            ∂f∂ī_mul_Δ̄ = :(conj(wirtinger_conjugate($∂i)) * wirtinger_conjugate($Δi))
+            ∂f̄∂i_mul_Δ = :(wirtinger_conjugate($∂i) * wirtinger_primal($Δi))
+            ∂f̄∂ī_mul_Δ̄ = :(conj(wirtinger_primal($∂i)) * wirtinger_conjugate($Δi))
+            push!(∂_mul_Δs_primal, :($∂f∂i_mul_Δ + $∂f∂ī_mul_Δ̄))
+            push!(∂_mul_Δs_conjugate, :($∂f̄∂i_mul_Δ + $∂f̄∂ī_mul_Δ̄))
+        else
+            ∂_mul_Δ = :(@thunk($(∂s[i])) * $(Δs[i]))
+            push!(∂_mul_Δs_primal, ∂_mul_Δ)
+            push!(∂_mul_Δs_conjugate, ∂_mul_Δ)
+        end
+    end
+    primal_sum = :(+($(∂_mul_Δs_primal...)))
+    conjugate_sum = :(+($(∂_mul_Δs_conjugate...)))
+    return quote  # This will be a block, so will have value equal to last statement
+        $(∂_wirtinger_defs...)
+        w = Wirtinger($primal_sum, $conjugate_sum)
+        differential($𝒟, w)
+    end
+end
 
 """
     @scalar_rule(f(x₁, x₂, ...),
@@ -91,6 +137,9 @@ For examples, see ChainRulesCore' `rules` directory.
 See also: [`frule`](@ref), [`rrule`](@ref), [`AbstractRule`](@ref)
 """
 macro scalar_rule(call, maybe_setup, partials...)
+    ############################################################################
+    # Setup: normalizing input form etc
+
     if Meta.isexpr(maybe_setup, :macrocall) && maybe_setup.args[1] == Symbol("@setup")
         setup_stmts = map(esc, maybe_setup.args[3:end])
     else
@@ -123,8 +172,14 @@ macro scalar_rule(call, maybe_setup, partials...)
         end
     end
 
-    ############################################################
-    # TODO: Wirtinger
+    ############################################################################
+    # Main body: defining the results of the frule/rrule
+
+    # An expression that when evaluated will return the type of the input domain.
+    # Multiple repetitions of this expression should optimize ot. But if it does not then
+    # may need to move its definition into the body of the `rrule`/`frule`
+    𝒟 = :(typeof(first(promote($(call.args[2:end]...)))))
+
     n_outputs = length(partials)
     n_inputs = length(inputs)
 
@@ -134,7 +189,7 @@ macro scalar_rule(call, maybe_setup, partials...)
         Δs = [Symbol(string(:Δ, i)) for i in 1:n_inputs]
         pushforward_returns = map(1:n_outputs) do output_i
             ∂s = partials[output_i].args
-            expr_for_∑_∂_mul_Δs(Δs, ∂s)
+            propergation_expr(𝒟, Δs, ∂s)
         end
 
         quote
@@ -146,7 +201,6 @@ macro scalar_rule(call, maybe_setup, partials...)
         end
     end
 
-
     pullback = let
         # Δs is the input to the propagator rule
         # because this is a pull-back there is one per output of function
@@ -155,7 +209,7 @@ macro scalar_rule(call, maybe_setup, partials...)
         # 1 partial derivative per input
         pullback_returns = map(1:n_inputs) do input_i
             ∂s = [partial.args[input_i] for partial in partials]
-            expr_for_∑_∂_mul_Δs(Δs, ∂s)
+            propergation_expr(𝒟, Δs, ∂s)
         end
 
         quote
@@ -165,7 +219,9 @@ macro scalar_rule(call, maybe_setup, partials...)
         end
     end
 
-    ########################################
+    ############################################################################
+    # Final return: building the expression to insert in the place of this macro
+
     code = quote
         if fieldcount(typeof($f)) > 0
             throw(ArgumentError(
@@ -186,84 +242,3 @@ macro scalar_rule(call, maybe_setup, partials...)
         end
     end
 end
-
-
-
-
-#==
-    if !all(Meta.isexpr(partial, :tuple) for partial in partials)
-        input_rep = :(first(promote($(inputs...))))  # stand-in with the right type for an input
-        forward_rules = Any[rule_from_partials(input_rep, partial.args...) for partial in partials]
-        reverse_rules = map(1:length(inputs) do i
-            reverse_partials = [partial.args[i] for partial in partials]
-            push!(reverse_rules, rule_from_partials(inputs[i], reverse_partials...))
-        end
-    else
-        @assert length(inputs) == 1 && all(!Meta.isexpr(partial, :tuple) for partial in partials)
-        forward_rules = Any[rule_from_partials(inputs[1], partial) for partial in partials]
-        reverse_rules = Any[rule_from_partials(inputs[1], partials...)]
-    end
-
-    # First pseudo-partial is derivative WRT function itself.  Since this macro does not
-    # support closures, it is just the empty NamedTuple
-    forward_rules = Expr(:tuple, ZERO_RULE, forward_rules...)
-    reverse_rules = Expr(:tuple, NO_FIELDS, reverse_rules...)
-    return quote
-
-
-        function ChainRulesCore.frule(::typeof($f), $(inputs...))
-            $(esc(:Ω)) = $call
-            $(setup_stmts...)
-            return $(esc(:Ω)), $forward_rules
-        end
-        function ChainRulesCore.rrule(::typeof($f), $(inputs...))
-            $(esc(:Ω)) = $call
-            $(setup_stmts...)
-            return $(esc(:Ω)), $reverse_rules
-        end
-    end
-end
-==#
-
-
-
-
-#==
-function rule_from_partials(input_arg, ∂s...)
-    wirtinger_indices = findall(x -> Meta.isexpr(x, :call) && x.args[1] === :Wirtinger,  ∂s)
-    ∂s = map(esc, ∂s)
-    Δs = [Symbol(string(:Δ, i)) for i in 1:length(∂s)]
-    Δs_tuple = Expr(:tuple, Δs...)
-    if isempty(wirtinger_indices)
-        ∂_mul_Δs = [:(@thunk($(∂s[i])) * $(Δs[i])) for i in 1:length(∂s)]
-        return :(Rule($Δs_tuple -> +($(∂_mul_Δs...))))
-    else
-        ∂_mul_Δs_primal = Any[]
-        ∂_mul_Δs_conjugate = Any[]
-        ∂_wirtinger_defs = Any[]
-        for i in 1:length(∂s)
-            if i in wirtinger_indices
-                Δi = Δs[i]
-                ∂i = Symbol(string(:∂, i))
-                push!(∂_wirtinger_defs, :($∂i = $(∂s[i])))
-                ∂f∂i_mul_Δ = :(wirtinger_primal($∂i) * wirtinger_primal($Δi))
-                ∂f∂ī_mul_Δ̄ = :(conj(wirtinger_conjugate($∂i)) * wirtinger_conjugate($Δi))
-                ∂f̄∂i_mul_Δ = :(wirtinger_conjugate($∂i) * wirtinger_primal($Δi))
-                ∂f̄∂ī_mul_Δ̄ = :(conj(wirtinger_primal($∂i)) * wirtinger_conjugate($Δi))
-                push!(∂_mul_Δs_primal, :($∂f∂i_mul_Δ + $∂f∂ī_mul_Δ̄))
-                push!(∂_mul_Δs_conjugate, :($∂f̄∂i_mul_Δ + $∂f̄∂ī_mul_Δ̄))
-            else
-                ∂_mul_Δ = :(@thunk($(∂s[i])) * $(Δs[i]))
-                push!(∂_mul_Δs_primal, ∂_mul_Δ)
-                push!(∂_mul_Δs_conjugate, ∂_mul_Δ)
-            end
-        end
-        primal_rule = :(Rule($Δs_tuple -> +($(∂_mul_Δs_primal...))))
-        conjugate_rule = :(Rule($Δs_tuple -> +($(∂_mul_Δs_conjugate...))))
-        return quote
-            $(∂_wirtinger_defs...)
-            AbstractRule(typeof($input_arg), $primal_rule, $conjugate_rule)
-        end
-    end
-end
-==#
