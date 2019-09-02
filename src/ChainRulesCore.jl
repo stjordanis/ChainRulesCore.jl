@@ -11,5 +11,5 @@ include("differentials.jl")
 include("differential_arithmetic.jl")
 include("rule_types.jl")
 include("rules.jl")
-#include("rule_definition_tools.jl")
+include("rule_definition_tools.jl")
 end # module

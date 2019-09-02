@@ -1,5 +1,27 @@
 # These are some macros (and supporting functions) to make it easier to define rules.
 
+propagator_name(f::Expr, propname::Symbol) = propagator_name(f.args[end], propname)
+propagator_name(fname::Symbol, propname::Symbol) = Symbol(fname, :_, propname)
+propagator_name(fname::QuoteNode, propname::Symbol) = propagator_name(fname.value, propname)
+
+
+"""
+    expr_for_∑_∂_mul_Δs(Δs, ∂s)
+
+    Returns the expression for the dot-product based propagation of
+    the input gradient `Δs` though the partials `∂s`.
+"""
+function expr_for_∑_∂_mul_Δs(Δs, ∂s)
+    ∂s = map(esc, ∂s)
+
+    # Notice: the thunking of `∂s[i] (potentially) saves us some computation
+    # if `Δs[i]` is a `AbstractDifferential` otherwise it is computed as soon
+    # as the pullback is evaluated
+    ∂_mul_Δs = [:(@thunk($(∂s[i])) * $(Δs[i])) for i in 1:length(∂s)]
+    return :(+($(∂_mul_Δs...)))
+end
+
+
 """
     @scalar_rule(f(x₁, x₂, ...),
                  @setup(statement₁, statement₂, ...),
@@ -77,6 +99,7 @@ macro scalar_rule(call, maybe_setup, partials...)
     end
     @assert Meta.isexpr(call, :call)
     f = esc(call.args[1])
+
     # Annotate all arguments in the signature as scalars
     inputs = map(call.args[2:end]) do arg
         esc(Meta.isexpr(arg, :(::)) ? arg : Expr(:(::), arg, :Number))
@@ -103,48 +126,71 @@ macro scalar_rule(call, maybe_setup, partials...)
     # Make pullback
     #(TODO: move to own function)
     # TODO: Wirtinger
+    n_outputs = length(partials)
+    n_inputs = length(inputs)
 
-    Δs = [Symbol(string(:Δ, i)) for i in 1:length(partials)]
-    pullback_returns = map(eachindex(inputs)) do input_i
-        ∂s = [partial.args[input_i] for partial in partials]
-        ∂s = map(esc, ∂s)
 
-        # Notice: the thunking of `∂s[i] (potentially) saves us some computation
-        # if `Δs[i]` is a `AbstractDifferential` otherwise it is computed as soon
-        # as the pullback is evaluated
-        ∂_mul_Δs = [:(@thunk($(∂s[i])) * $(Δs[i])) for i in 1:length(∂s)]
-        :(+($(∂_mul_Δs...)))
-    end
+    pullback = let
+        # Δs is the input to the propagator rule
+        # because this is a pull-back there is one per output of function
+        Δs = [Symbol(string(:Δ, i)) for i in 1:n_outputs]
 
-    pullback = quote
-        function $(Symbol(f.args[1], :_pullback))($(Δs...))
-            return (NO_FIELDS, $(pullback_returns...))
+        # 1 partial derivative per input
+        pullback_returns = map(1:n_inputs) do input_i
+            ∂s = [partial.args[input_i] for partial in partials]
+            expr_for_∑_∂_mul_Δs(Δs, ∂s)
+        end
+
+        quote
+            function $(propagator_name(f, :pullback))($(Δs...))
+                return (NO_FIELDS, $(pullback_returns...))
+            end
         end
     end
 
+    pushforward = let
+        # Δs is the input to the propagator rule
+        # because this is push-forward there is one per input to the function
+        Δs = [Symbol(string(:Δ, i)) for i in 1:n_inputs]
+        pushforward_returns = map(partials) do partial
+            ∂s = partial.args
+            expr_for_∑_∂_mul_Δs(Δs, ∂s)
+        end
+
+        quote
+            # _ is the input derivative w.r.t. function internals. since we do not
+            # allow closures/functors with @scalar_rule, it is always ignored
+            function $(propagator_name(f, :pushforward))(_, $(Δs...))
+                return ($(pushforward_returns...))
+            end
+        end
+    end
+
+
     ########################################
     code = quote
+        if fieldcount(typeof($f)) > 0
+            throw(ArgumentError(
+                "@scalar_rule cannot be used on closures/functors (such as $f)"
+            ))
+        end
+
         function ChainRulesCore.rrule(::typeof($f), $(inputs...))
             $(esc(:Ω)) = $call
             $(setup_stmts...)
             return $(esc(:Ω)), $pullback
         end
+
+        function ChainRulesCore.frule(::typeof($f), $(inputs...))
+            $(esc(:Ω)) = $call
+            $(setup_stmts...)
+            return $(esc(:Ω)), $pushforward
+        end
     end
-
-end
-using ChainRulesCore
-
-
-macro niceexpand(code)
-    code = Base.macroexpand(Main, code, recursive=false)
-    code = MacroTools.postwalk(MacroTools.unblock, code)
-    code = MacroTools.gensym_ids(code)
-    code = MacroTools.striplines(code)
-    return QuoteNode(code)
 end
 
-@niceexpand(@scalar_rule(one(x), Zero()))
-@niceexpand(@scalar_rule(sincos(x), @setup((sinx, cosx) = Ω), cosx, -sinx))
+
+
 
 #==
     if !all(Meta.isexpr(partial, :tuple) for partial in partials)
@@ -165,11 +211,7 @@ end
     forward_rules = Expr(:tuple, ZERO_RULE, forward_rules...)
     reverse_rules = Expr(:tuple, NO_FIELDS, reverse_rules...)
     return quote
-        if fieldcount(typeof($f)) > 0
-            throw(ArgumentError(
-                "@scalar_rule cannot be used on closures/functors (such as $f)"
-            ))
-        end
+
 
         function ChainRulesCore.frule(::typeof($f), $(inputs...))
             $(esc(:Ω)) = $call
