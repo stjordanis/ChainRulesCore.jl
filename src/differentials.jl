@@ -241,7 +241,7 @@ const NO_FIELDS = DNE()
 """
     differential(𝒟::Type, der)
 
-For some differential (e.g. a `Number`, `AbstractDifferential`, `Matrix` etc),
+For some differential (e.g. a `Number`, `AbstractDifferential`, `Matrix`, etc.),
 convert it to another differential that is more suited for the domain given by
 the type 𝒟.
 """
