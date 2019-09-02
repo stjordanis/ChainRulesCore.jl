@@ -230,6 +230,7 @@ Base.show(io::IO, x::Thunk) = println(io, "Thunk($(repr(x.f)))")
 
 """
     NO_FIELDS
+
 Constant for the reverse-mode derivative with respect to a structure that has no fields.
 The most notable use for this is for the reverse-mode derivative with respect to the
 function itself, when that function is not a closure.
@@ -241,7 +242,7 @@ const NO_FIELDS = DNE()
     differential(𝒟::Type, der)
 
 For some differential (e.g. a `Number`, `AbstractDifferential`, `Matrix` etc),
-converts it to another differential that is more suited for the domain given by
+convert it to another differential that is more suited for the domain given by
 the type 𝒟.
 """
 function differential(::Type{<:Union{<:Real, AbstractArray{<:Real}}}, w::Wirtinger)

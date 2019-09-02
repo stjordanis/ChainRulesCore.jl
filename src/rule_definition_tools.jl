@@ -6,29 +6,29 @@ propagator_name(fname::QuoteNode, propname::Symbol) = propagator_name(fname.valu
 
 
 """
-    propergation_expr(𝒟, Δs, ∂s)
+    propagation_expr(𝒟, Δs, ∂s)
 
     Returns the expression for the propagation of
     the input gradient `Δs` though the partials `∂s`.
 
     𝒟 is an expression that when evaluated returns the type-of the input domain.
-    For example if the deriviative is being taken at the point `1` it returns `Int`.
+    For example if the derivative is being taken at the point `1` it returns `Int`.
     if it is taken at `1+1im` it returns `Complex{Int}`.
     At present it is ignored for non-Wirtinger derivatives.
 """
-function propergation_expr(𝒟, Δs, ∂s)
+function propagation_expr(𝒟, Δs, ∂s)
     wirtinger_indices = findall(∂s) do ex
         Meta.isexpr(ex, :call) && ex.args[1] === :Wirtinger
     end
     ∂s = map(esc, ∂s)
     if isempty(wirtinger_indices)
-        return standard_propergation_expr(Δs, ∂s)
+        return standard_propagation_expr(Δs, ∂s)
     else
-        return wirtinger_propergation_expr(𝒟, wirtinger_indices, Δs, ∂s)
+        return wirtinger_propagation_expr(𝒟, wirtinger_indices, Δs, ∂s)
     end
 end
 
-function standard_propergation_expr(Δs, ∂s)
+function standard_propagation_expr(Δs, ∂s)
     # This is basically Δs ⋅ ∂s
 
     # Notice: the thunking of `∂s[i] (potentially) saves us some computation
@@ -38,7 +38,7 @@ function standard_propergation_expr(Δs, ∂s)
     return :(+($(∂_mul_Δs...)))
 end
 
-function wirtinger_propergation_expr(𝒟, wirtinger_indices, Δs, ∂s)
+function wirtinger_propagation_expr(𝒟, wirtinger_indices, Δs, ∂s)
     ∂_mul_Δs_primal = Any[]
     ∂_mul_Δs_conjugate = Any[]
     ∂_wirtinger_defs = Any[]
@@ -110,7 +110,7 @@ e.g. `f(x₁::Complex, x₂)`, which will constrain `x₁` to `Complex` and `x�
 At present this does not support defining for closures/functors.
 Thus in reverse-mode, the first returned partial,
 representing the derivative with respect to the function itself, is always `NO_FIELDS`.
-And in forwards-mode, the first input to the returned propagator is always ignored.
+And in forward-mode, the first input to the returned propagator is always ignored.
 
 The result of `f(x₁, x₂, ...)` is automatically bound to `Ω`. This
 allows the primal result to be conveniently referenced (as `Ω`) within the
