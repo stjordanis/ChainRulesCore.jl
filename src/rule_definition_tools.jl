@@ -205,7 +205,7 @@ macro scalar_rule(call, maybe_setup, partials...)
         Δs = [Symbol(string(:Δ, i)) for i in 1:n_inputs]
         pushforward_returns = map(1:n_outputs) do output_i
             ∂s = partials[output_i].args
-            propergation_expr(𝒟, Δs, ∂s)
+            propagation_expr(𝒟, Δs, ∂s)
         end
 
         quote
