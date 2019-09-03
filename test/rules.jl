@@ -32,7 +32,7 @@ _second(t) = Base.tuple_type_head(Base.tuple_type_tail(t))
     frx, fr = frule(cool, 1)
     @test frx == 2
     @test fr(NamedTuple(), 1) == (1,)
-    rrx, (rr) = rrule(cool, 1)
+    rrx, rr = rrule(cool, 1)
     self, rr1 = rr(1)
     @test self == NO_FIELDS
     @test rrx == 2
