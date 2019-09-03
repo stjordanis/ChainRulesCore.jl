@@ -183,7 +183,7 @@ macro scalar_rule(call, maybe_setup, partials...)
         if Meta.isexpr(partial, :tuple)
             partial
         else
-            @assert length(inputs) == 1
+            length(inputs) == 1 || error("Invalid use of `@scalar_rule`")
             Expr(:tuple, partial)
         end
     end
