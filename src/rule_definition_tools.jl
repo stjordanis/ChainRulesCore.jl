@@ -209,7 +209,7 @@ macro scalar_rule(call, maybe_setup, partials...)
         # 1 partial derivative per input
         pullback_returns = map(1:n_inputs) do input_i
             ∂s = [partial.args[input_i] for partial in partials]
-            propergation_expr(𝒟, Δs, ∂s)
+            propagation_expr(𝒟, Δs, ∂s)
         end
 
         quote
