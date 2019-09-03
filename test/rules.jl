@@ -29,11 +29,11 @@ _second(t) = Base.tuple_type_head(Base.tuple_type_tail(t))
                         Tuple{typeof(rrule),typeof(cool),String}])
     @test cool_methods == only_methods
 
-    frx, fr = frule(cool, 1)
+    frx, cool_pushforward = frule(cool, 1)
     @test frx == 2
-    @test fr(NamedTuple(), 1) == (1,)
-    rrx, rr = rrule(cool, 1)
-    self, rr1 = rr(1)
+    @test cool_pushforward(NamedTuple(), 1) == (1,)
+    rrx, cool_pullback = rrule(cool, 1)
+    self, rr1 = cool_pullback(1)
     @test self == NO_FIELDS
     @test rrx == 2
     @test rr1 == 1
@@ -44,29 +44,33 @@ end
     myabs2(x) = abs2(x)
     @scalar_rule(myabs2(x), Wirtinger(x', x))
 
-    # real input
-    x = rand(Float64)
-    f, pushforward = frule(myabs2, x)
-    @test f === x^2
+    @testset "real input" begin
+        # even though our rule was define in terms of Wirtinger,
+        # pushforward result will be real as real (even if seed is Compex)
 
-    df = @inferred pushforward(NamedTuple(), One())
-    @test df === (x + x,)
+        x = rand(Float64)
+        f, myabs2_pushforward = frule(myabs2, x)
+        @test f === x^2
 
+        Δ = One()
+        df = @inferred myabs2_pushforward(NamedTuple(), Δ)
+        @test df === (x + x,)
 
-    Δ = rand(Complex{Int64})
-    df = @inferred pushforward(NamedTuple(), Δ)
-    @test df === (Δ * (x + x),)
+        Δ = rand(Complex{Int64})
+        df = @inferred myabs2_pushforward(NamedTuple(), Δ)
+        @test df === (Δ * (x + x),)
+    end
 
+    @testset "complex input" begin
+        z = rand(Complex{Float64})
+        f, myabs2_pushforward = frule(myabs2, z)
+        @test f === abs2(z)
 
-    # complex input
-    z = rand(Complex{Float64})
-    f, pushforward = frule(myabs2, z)
-    @test f === abs2(z)
+        df = @inferred myabs2_pushforward(NamedTuple(), One())
+        @test df === (Wirtinger(z', z),)
 
-    df = @inferred pushforward(NamedTuple(), One())
-    @test df === (Wirtinger(z', z),)
-
-    Δ = rand(Complex{Int64})
-    df = @inferred pushforward(NamedTuple(), Δ)
-    @test df === (Wirtinger(Δ * z', Δ * z),)
+        Δ = rand(Complex{Int64})
+        df = @inferred myabs2_pushforward(NamedTuple(), Δ)
+        @test df === (Wirtinger(Δ * z', Δ * z),)
+    end
 end
