@@ -1,5 +1,21 @@
 # These are some macros (and supporting functions) to make it easier to define rules.
 
+"""
+    propagator_name(f, propname)
+Determines a reasonable name for the propagator function.
+The name doesn't really matter too much as it is a local function to be returned
+by `frule` or `rrule`, but a good name make debugging easier.
+`f` should be some form of AST representation of the actual function,
+`propname` should be either `:pullback` or `:pushforward`
+
+This is able to deal with fairly complex expressions for `f`:
+
+    julia> propagator_name(:bar, :pushforward)
+    :bar_pushforward
+
+    julia> propagator_name(esc(:(Base.Random.foo)), :pullback)
+    :foo_pullback
+"""
 propagator_name(f::Expr, propname::Symbol) = propagator_name(f.args[end], propname)
 propagator_name(fname::Symbol, propname::Symbol) = Symbol(fname, :_, propname)
 propagator_name(fname::QuoteNode, propname::Symbol) = propagator_name(fname.value, propname)
