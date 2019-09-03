@@ -204,7 +204,9 @@ accumulate!(Δ::Number, ∂) = accumulate(Δ, ∂)
 
 
 """
-    store!(Δ, rule::AbstractRule, args...)
+    store!(Δ, ∂)
+
+TODO: Rewrite these docs
 
 Compute `rule(args...)` and store the result in `Δ`, potentially avoiding
 intermediate temporary allocations that might be necessary for alternative
@@ -217,4 +219,4 @@ to be customizable for specific rules/input types.
 
 See also: [`accumulate`](@ref), [`accumulate!`](@ref), [`AbstractRule`](@ref)
 """
-store!(Δ, rule, args...) = materialize!(Δ, broadcastable(rule(args...)))
+store!(Δ, ∂) = materialize!(Δ, broadcastable(∂))
