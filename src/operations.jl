@@ -19,7 +19,7 @@ storing the result in `Δ`.
 Note: this function may not actually store the result in `Δ` if `Δ` is immutable,
 so it is best to always call this as `Δ = accumulate!(Δ, ∂)` just in-case.
 
-This function is overloadable by [`InplacableThunk`s](@ref).
+This function is overloadable by [`InplaceableThunk`s](@ref).
 See also: [`accumulate`](@ref), [`store!`](@ref), [`AbstractRule`](@ref)
 """
 function accumulate!(Δ, ∂)
